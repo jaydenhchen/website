@@ -106,6 +106,8 @@ export const meshVertex = /* glsl */ `
   uniform float uHover;
   uniform float uShock;
   uniform float uAudio;
+  uniform float uWave;
+  uniform float uPunch;
   ${MORPH}
 
   void main() {
@@ -118,9 +120,11 @@ export const meshVertex = /* glsl */ `
     float falloff = exp(-dot(d, d) * 0.32) * uHover * 0.62;
     pos += d * falloff;
     float rad = length(pos);
-    float shock = exp(-abs(rad - uShock * 3.8) * 4.2) * uShock;
-    pos += normalize(pos + 0.0001) * (shock * 0.95 + uAudio * 0.18);
-    vLift = falloff + shock;
+    float ring = exp(-abs(rad - uWave * 4.6) * 3.1) * uPunch;
+    float crush = uPunch * (1.0 - uWave) * 0.22;
+    pos += normalize(pos + 0.0001) * (ring * 1.55 + crush + uAudio * 0.18);
+    pos *= 1.0 + crush * 0.12;
+    vLift = falloff + ring + crush;
     vec4 world = modelMatrix * vec4(pos, 1.0);
     vPos = world.xyz;
     vView = cameraPosition - world.xyz;
@@ -139,6 +143,8 @@ export const meshFragment = /* glsl */ `
   uniform vec3 uColorB;
   uniform vec3 uColorC;
   uniform float uShock;
+  uniform float uPunch;
+  uniform float uWave;
 
   void main() {
     vec3 n = normalize(cross(dFdx(vPos), dFdy(vPos)));
@@ -158,8 +164,9 @@ export const meshFragment = /* glsl */ `
     col += uColorA * pow(fres, 3.0) * 0.35;
     float scan = pow(abs(sin(vPos.y * 5.0 - uTime * 2.4)), 28.0);
     col += uColorB * scan * 0.16;
-    col += uColorC * vLift * 0.9;
-    col += uColorA * uShock * 0.28;
+    col += uColorC * vLift * (0.9 + uPunch * 1.6);
+    col += vec3(1.15, 1.12, 1.05) * uPunch * (0.12 + exp(-abs(length(vPos) - uWave * 4.6) * 2.8) * 0.85);
+    col += uColorA * uShock * 0.18;
     float fog = 1.0 - exp(-length(vView) * 0.028);
     col = mix(col, vec3(0.02, 0.021, 0.03), fog);
     float alpha = mix(0.88, 0.98, fres);
@@ -174,18 +181,21 @@ export const particleVertex = /* glsl */ `
   uniform float uSize;
   uniform float uShock;
   uniform float uAudio;
+  uniform float uWave;
+  uniform float uPunch;
   varying float vAlpha;
   varying float vMix;
   ${MORPH}
 
   void main() {
     vec3 pos = morph(position.x, position.y, uProgress);
-    pos += normal * (0.05 * sin(uTime * 0.9 + position.x * 22.0) + uShock * 1.6 + uAudio * 0.25);
+    float burst = uPunch * (0.85 + uWave * 1.8);
+    pos += normal * (0.05 * sin(uTime * 0.9 + position.x * 22.0) + burst + uAudio * 0.25);
     vec3 pull = vec3(uMouse.x * 2.3, uMouse.y * 1.5, 0.6);
     pos += (pull - pos) * exp(-dot(pull - pos, pull - pos) * 0.38) * 0.4;
     vec4 mv = modelViewMatrix * vec4(pos, 1.0);
     gl_Position = projectionMatrix * mv;
-    gl_PointSize = uSize * (1.15 + 0.45 * sin(uTime + position.x * 30.0) + uShock * 1.4) * (140.0 / -mv.z);
+    gl_PointSize = uSize * (1.15 + 0.45 * sin(uTime + position.x * 30.0) + uPunch * 2.4) * (140.0 / -mv.z);
     vAlpha = clamp(1.9 / -mv.z, 0.1, 1.0);
     vMix = fract(uProgress * 6.0);
   }
@@ -361,7 +371,14 @@ export const cinematicShader = {
     uProgress: { value: 0 },
     uShock: { value: 0 },
     uRes: { value: { x: 1, y: 1 } },
-    uAberration: { value: 0.0028 }
+    uAberration: { value: 0.0028 },
+    uFlash: { value: 0 },
+    uInvert: { value: 0 },
+    uMono: { value: 0 },
+    uWave: { value: 0 },
+    uPunch: { value: 0 },
+    uShake: { value: 0 },
+    uHit: { value: { x: 0.5, y: 0.5 } }
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -379,6 +396,13 @@ export const cinematicShader = {
     uniform float uShock;
     uniform vec2 uRes;
     uniform float uAberration;
+    uniform float uFlash;
+    uniform float uInvert;
+    uniform float uMono;
+    uniform float uWave;
+    uniform float uPunch;
+    uniform float uShake;
+    uniform vec2 uHit;
     varying vec2 vUv;
 
     float hash(vec2 p) {
@@ -387,23 +411,46 @@ export const cinematicShader = {
 
     void main() {
       vec2 uv = vUv;
+      float aspect = uRes.x / max(uRes.y, 1.0);
+      uv += vec2(hash(vec2(uTime, 1.7)), hash(vec2(uTime, 8.3))) * uShake * 0.045 - uShake * 0.022;
+
       vec2 c = uv - 0.5;
       float dist = length(c);
-      uv = 0.5 + c * (1.0 + dist * dist * (0.085 + uShock * 0.12));
-      vec2 dir = normalize(c + uMouse * 0.12 + 0.0001);
-      float ab = uAberration + uShock * 0.012 + abs(sin(uProgress * 6.283)) * 0.0015;
+      float zoom = 1.0 - uPunch * 0.09 + uFlash * 0.04;
+      uv = 0.5 + c * zoom;
+      c = uv - 0.5;
+      dist = length(c);
+      uv = 0.5 + c * (1.0 + dist * dist * (0.085 + uPunch * 0.22));
+
+      vec2 from = uv - uHit;
+      float hd = length(from * vec2(aspect, 1.0));
+      float ring = exp(-abs(hd - uWave * 1.2) * 22.0) * uPunch;
+      uv += normalize(from + 0.0001) * ring * 0.11;
+
+      float slice = floor(uv.y * (18.0 + uPunch * 40.0));
+      float glitch = step(0.82, hash(vec2(slice, floor(uTime * 60.0)))) * uPunch;
+      uv.x += (hash(vec2(slice, 3.1)) - 0.5) * glitch * 0.08;
+
+      vec2 dir = normalize(from + c + uMouse * 0.08 + 0.0001);
+      float ab = uAberration + uPunch * 0.04 + uShake * 0.02 + ring * 0.03;
       float r = texture2D(tDiffuse, uv + dir * ab).r;
       float g = texture2D(tDiffuse, uv).g;
       float b = texture2D(tDiffuse, uv - dir * ab).b;
       vec3 col = vec3(r, g, b);
+
       float vig = smoothstep(1.05, 0.22, dist);
-      col *= vig;
+      col *= mix(vig, 1.0, uFlash);
       float scan = 0.96 + 0.04 * sin(uv.y * uRes.y * 1.4 + uTime * 8.0);
-      col *= scan;
+      col *= mix(scan, 1.0, uFlash);
       float n = hash(uv * uRes + uTime * 40.0);
-      col += (n - 0.5) * 0.03;
-      float flash = uShock * 0.08;
-      col += vec3(flash);
+      col += (n - 0.5) * (0.03 + uPunch * 0.12);
+
+      col = mix(col, 1.0 - col, uInvert);
+      float luma = dot(col, vec3(0.299, 0.587, 0.114));
+      col = mix(col, vec3(luma), uMono);
+      col = mix(col, floor(col * 4.0 + 0.5) / 4.0, uMono * 0.55);
+      col += vec3(uFlash);
+      col += vec3(1.0, 0.95, 0.75) * ring * 0.65;
       col = mix(col, col * vec3(1.04, 1.0, 0.96), 0.35);
       gl_FragColor = vec4(col, 1.0);
     }

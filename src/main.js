@@ -12,7 +12,7 @@ import {
   revealWarps,
   tiltCards,
   magnetic,
-  spawnRipple
+  triggerImpact
 } from './interact.js'
 
 gsap.registerPlugin(ScrollTrigger)
@@ -146,7 +146,9 @@ async function start() {
   window.addEventListener('pointerdown', (e) => {
     if (e.target.closest('a, button')) return
     liquid.pulse()
-    spawnRipple(e.clientX, e.clientY, getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())
+    const color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d6ff3f'
+    triggerImpact(e.clientX, e.clientY, color)
+    sonic.bang()
   })
 
   uiReady = true

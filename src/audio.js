@@ -55,6 +55,61 @@ export class SonicField {
     this.ready = true
   }
 
+  async bang() {
+    const AC = window.AudioContext || window.webkitAudioContext
+    if (!AC) return
+    if (!this.bangCtx) this.bangCtx = new AC()
+    if (this.bangCtx.state === 'suspended') await this.bangCtx.resume()
+    const ctx = this.bangCtx
+    const t = ctx.currentTime
+    const rate = ctx.sampleRate
+    const len = Math.floor(rate * 0.16)
+    const buffer = ctx.createBuffer(1, len, rate)
+    const data = buffer.getChannelData(0)
+    for (let i = 0; i < len; i++) {
+      const env = Math.pow(1 - i / len, 2.4)
+      data[i] = (Math.random() * 2 - 1) * env
+    }
+    const noise = ctx.createBufferSource()
+    noise.buffer = buffer
+    const bp = ctx.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.frequency.setValueAtTime(220, t)
+    bp.frequency.exponentialRampToValueAtTime(70, t + 0.12)
+    bp.Q.value = 0.7
+    const ng = ctx.createGain()
+    ng.gain.setValueAtTime(0.55, t)
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.16)
+    noise.connect(bp)
+    bp.connect(ng)
+    ng.connect(ctx.destination)
+    noise.start(t)
+
+    const thump = ctx.createOscillator()
+    thump.type = 'sine'
+    thump.frequency.setValueAtTime(78, t)
+    thump.frequency.exponentialRampToValueAtTime(28, t + 0.2)
+    const tg = ctx.createGain()
+    tg.gain.setValueAtTime(0.5, t)
+    tg.gain.exponentialRampToValueAtTime(0.001, t + 0.22)
+    thump.connect(tg)
+    tg.connect(ctx.destination)
+    thump.start(t)
+    thump.stop(t + 0.24)
+
+    const tick = ctx.createOscillator()
+    tick.type = 'square'
+    tick.frequency.setValueAtTime(420, t)
+    tick.frequency.exponentialRampToValueAtTime(90, t + 0.04)
+    const kg = ctx.createGain()
+    kg.gain.setValueAtTime(0.08, t)
+    kg.gain.exponentialRampToValueAtTime(0.001, t + 0.05)
+    tick.connect(kg)
+    kg.connect(ctx.destination)
+    tick.start(t)
+    tick.stop(t + 0.06)
+  }
+
   update(progress, shock) {
     if (!this.enabled || !this.ready) {
       this.level *= 0.9

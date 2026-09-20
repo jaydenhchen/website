@@ -99,8 +99,23 @@ export class World {
     this.dragging = false
     this.drag = new THREE.Vector2()
     this.shock = 0
+    this.simTime = 0
     this.audio = 0
     this.intro = 0
+    this.bloomBase = 0
+    this.impact = {
+      age: 10,
+      frame: 99,
+      releaseAge: 10,
+      released: true,
+      flash: 0,
+      invert: 0,
+      mono: 0,
+      punch: 0,
+      wave: 0,
+      shake: 0,
+      origin: new THREE.Vector2(0.5, 0.5)
+    }
     this.scrollVel = 0
     this.lastProgress = 0
     this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -136,6 +151,8 @@ export class World {
       uHover: { value: 0 },
       uShock: { value: 0 },
       uAudio: { value: 0 },
+      uWave: { value: 0 },
+      uPunch: { value: 0 },
       uColorA: { value: new THREE.Color(PALETTES[0].a) },
       uColorB: { value: new THREE.Color(PALETTES[0].b) },
       uColorC: { value: new THREE.Color(PALETTES[0].c) },
@@ -263,6 +280,18 @@ export class World {
     )
     this.scene.add(this.fieldLines)
 
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: '#ffffff',
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    })
+    this.shockRing = new THREE.Mesh(new THREE.RingGeometry(0.92, 1.02, 96), ringMat)
+    this.shockRing2 = new THREE.Mesh(new THREE.RingGeometry(0.97, 1.0, 64), ringMat.clone())
+    this.scene.add(this.shockRing, this.shockRing2)
+
     this.key = new THREE.PointLight('#79e7ff', 14, 20)
     this.fill = new THREE.PointLight('#ff5a36', 9, 18)
     this.mouseLight = new THREE.PointLight('#d6ff3f', 8, 12)
@@ -272,9 +301,10 @@ export class World {
 
     this.composer = new EffectComposer(this.renderer)
     this.composer.addPass(new RenderPass(this.scene, this.camera))
+    this.bloomBase = this.mobile ? 0.1 : 0.14
     this.bloom = new UnrealBloomPass(
       new THREE.Vector2(innerWidth, innerHeight),
-      this.mobile ? 0.1 : 0.14,
+      this.bloomBase,
       0.38,
       0.34
     )
@@ -283,6 +313,7 @@ export class World {
     this.fx = new ShaderPass(cinematicShader)
     this.fx.uniforms.uRes.value = new THREE.Vector2(innerWidth, innerHeight)
     this.fx.uniforms.uMouse.value = new THREE.Vector2()
+    this.fx.uniforms.uHit.value = this.impact.origin
     this.composer.addPass(this.fx)
 
     this._onPointer = this.onPointer.bind(this)
@@ -310,11 +341,84 @@ export class World {
   onDown(e) {
     this.dragging = true
     if (e.target.closest && e.target.closest('a, button')) return
-    this.shock = 1
+    const nx = (e.clientX / innerWidth) * 2 - 1
+    const ny = -(e.clientY / innerHeight) * 2 + 1
+    this.pulse(nx, ny)
   }
 
-  pulse() {
+  pulse(nx = this.mouse.x, ny = this.mouse.y) {
+    this.impact.age = 0
+    this.impact.frame = 0
+    this.impact.releaseAge = 0
+    this.impact.released = false
+    this.impact.origin.set(nx * 0.5 + 0.5, ny * 0.5 + 0.5)
     this.shock = 1
+    if (this.reduced) {
+      this.impact.punch = 0.4
+      this.impact.wave = 0
+      this.impact.flash = 0
+      this.impact.invert = 0
+      this.impact.mono = 0
+      this.impact.shake = 0
+      this.impact.released = true
+    }
+  }
+
+  sampleImpact(rawDt) {
+    const imp = this.impact
+    imp.frame += 1
+    if (this.reduced) {
+      imp.punch *= 0.9
+      imp.wave = Math.min(1, imp.wave + 0.08)
+      this.shock = imp.punch
+      return 1
+    }
+    const f = imp.frame
+    if (f <= 2) {
+      imp.flash = 1
+      imp.invert = 0
+      imp.mono = 0.1
+      imp.punch = 1
+      imp.shake = 0
+      imp.wave = 0
+      this.shock = 1
+      return 0
+    }
+    if (f <= 4) {
+      imp.flash = 0.08
+      imp.invert = 1
+      imp.mono = 1
+      imp.punch = 1
+      imp.shake = 0.12
+      imp.wave = 0
+      this.shock = 1
+      return 0
+    }
+    if (f <= 8) {
+      imp.flash = 0.38
+      imp.invert = 0.18
+      imp.mono = 0.42
+      imp.punch = 1
+      imp.shake = 0.9
+      imp.wave = 0.04
+      this.shock = 1
+      return 0.04
+    }
+    if (!imp.released) {
+      imp.released = true
+      imp.releaseAge = 0
+    }
+    imp.releaseAge += rawDt
+    const t = imp.releaseAge
+    const decay = Math.exp(-t * 2.15)
+    imp.flash = Math.exp(-t * 10) * 0.18
+    imp.invert = 0
+    imp.mono = Math.exp(-t * 7) * 0.14
+    imp.punch = decay
+    imp.shake = Math.exp(-t * 4.2)
+    imp.wave = Math.min(1, t * 1.7)
+    this.shock = decay
+    return 1
   }
 
   setProgress(t) {
@@ -344,14 +448,17 @@ export class World {
   }
 
   render() {
-    const dt = Math.min(0.05, this.clock.getDelta())
-    const t = this.clock.elapsedTime
+    const rawDt = Math.min(0.05, this.clock.getDelta())
+    this.impact.age += rawDt
+    const timeScale = this.sampleImpact(rawDt)
+    const dt = rawDt * timeScale
+    this.simTime += dt
+    const t = this.simTime
     this.progress += (this.targetProgress - this.progress) * (this.reduced ? 1 : 0.07)
     this.scrollVel += (this.progress - this.lastProgress - this.scrollVel) * 0.2
     this.lastProgress = this.progress
     this.mouse.lerp(this.targetMouse, 0.09)
     this.hover += ((this.dragging ? 1 : 0.4) - this.hover) * 0.05
-    this.shock += (0 - this.shock) * (this.reduced ? 1 : 0.045)
     this.intro = Math.min(1, this.intro + dt * 0.42)
 
     const p = this.progress
@@ -369,6 +476,8 @@ export class World {
     this.uniforms.uHover.value = this.hover
     this.uniforms.uShock.value = this.shock
     this.uniforms.uAudio.value = this.audio
+    this.uniforms.uWave.value = this.impact.wave
+    this.uniforms.uPunch.value = this.impact.punch
     this.uniforms.uColorA.value.copy(this.palette.a)
     this.uniforms.uColorB.value.copy(this.palette.b)
     this.uniforms.uColorC.value.copy(this.palette.c)
@@ -379,21 +488,25 @@ export class World {
     this.wireUniforms.uHover.value = this.hover
     this.wireUniforms.uShock.value = this.shock
     this.wireUniforms.uAudio.value = this.audio
+    this.wireUniforms.uWave.value = Math.max(0, this.impact.wave - 0.04)
+    this.wireUniforms.uPunch.value = this.impact.punch
     this.wireUniforms.uColorA.value.copy(this.palette.a)
     this.wireUniforms.uColorB.value.copy(this.palette.b)
     this.wireUniforms.uColorC.value.copy(this.palette.c)
 
     const introEase = 1 - Math.pow(1 - this.intro, 3)
     const angle = p * Math.PI * 1.7 + this.drag.x + Math.sin(t * 0.12) * 0.08
-    const dist = THREE.MathUtils.lerp(4.6, 6.5, introEase) - Math.sin(p * Math.PI) * 1.15 - this.shock * 0.2
+    const crush = this.impact.frame <= 8 ? this.impact.punch * 0.9 : this.impact.punch * 0.28
+    const dist = THREE.MathUtils.lerp(4.6, 6.5, introEase) - Math.sin(p * Math.PI) * 1.15 - crush * 0.55
     const cy = 0.15 + Math.sin(p * Math.PI) * 1.25 - this.drag.y
-    this.camera.position.x = Math.sin(angle) * dist + this.mouse.x * 0.55
+    const shake = this.impact.shake
+    this.camera.position.x = Math.sin(angle) * dist + this.mouse.x * 0.55 + (Math.random() - 0.5) * shake * 0.62
     this.camera.position.z = Math.cos(angle) * dist
-    this.camera.position.y = cy + this.mouse.y * 0.32
-    this.camera.fov = 38 + Math.sin(p * Math.PI) * 8 + this.shock * 4
+    this.camera.position.y = cy + this.mouse.y * 0.32 + (Math.random() - 0.5) * shake * 0.48
+    this.camera.fov = 38 + Math.sin(p * Math.PI) * 8 + crush * 14
     this.camera.updateProjectionMatrix()
     this.camera.lookAt(0, Math.sin(p * Math.PI) * 0.2, 0)
-    this.camera.rotateZ(this.scrollVel * 1.8 + this.mouse.x * 0.018)
+    this.camera.rotateZ(this.scrollVel * 1.8 + this.mouse.x * 0.018 + (Math.random() - 0.5) * shake * 0.08)
 
     this.mesh.rotation.y = t * 0.07 + this.drag.x * 0.45
     this.mesh.rotation.x = Math.sin(t * 0.11) * 0.08
@@ -403,7 +516,7 @@ export class World {
     this.stars.rotation.y = t * 0.014
     this.ribbons.rotation.y = t * 0.18
     this.ribbons.rotation.x = t * 0.07
-    this.ribbons.scale.setScalar(1 + this.audio * 0.12 + this.shock * 0.2)
+    this.ribbons.scale.setScalar(1 + this.audio * 0.12 + this.impact.punch * 0.35)
     this.core.rotation.y = t * 0.6
     this.core.rotation.x = t * 0.4
     this.grid.position.y = -2.35 + Math.sin(p * Math.PI) * 0.15
@@ -440,11 +553,31 @@ export class World {
     this.fieldLines.geometry.attributes.position.needsUpdate = true
     this.fieldLines.material.color.copy(this.palette.a)
 
+    const wave = Math.max(0.001, this.impact.wave)
+    this.shockRing.visible = this.impact.punch > 0.02
+    this.shockRing2.visible = this.impact.punch > 0.02
+    this.shockRing.scale.setScalar(0.2 + wave * 7.4)
+    this.shockRing2.scale.setScalar(0.12 + wave * 9.2)
+    this.shockRing.lookAt(this.camera.position)
+    this.shockRing2.lookAt(this.camera.position)
+    this.shockRing.material.color.set(this.impact.frame <= 4 ? '#ffffff' : this.palette.b)
+    this.shockRing.material.opacity = this.impact.punch * (1 - wave) * 0.95
+    this.shockRing2.material.opacity = this.impact.punch * (1 - wave) * 0.55
+    this.core.scale.setScalar(1 + this.impact.punch * 1.8 * (this.impact.frame <= 8 ? 1 : 0.35))
+
+    this.bloom.strength = this.bloomBase + this.impact.flash * 1.6 + this.impact.punch * 0.45
     this.fx.uniforms.uTime.value = t
     this.fx.uniforms.uProgress.value = p
     this.fx.uniforms.uShock.value = this.shock
     this.fx.uniforms.uMouse.value.copy(this.mouse)
-    this.fx.uniforms.uAberration.value = 0.0024 + Math.abs(this.scrollVel) * 0.08 + this.shock * 0.01
+    this.fx.uniforms.uAberration.value = 0.0024 + Math.abs(this.scrollVel) * 0.08 + this.impact.punch * 0.03 + this.impact.shake * 0.02
+    this.fx.uniforms.uFlash.value = this.impact.flash
+    this.fx.uniforms.uInvert.value = this.impact.invert
+    this.fx.uniforms.uMono.value = this.impact.mono
+    this.fx.uniforms.uWave.value = this.impact.wave
+    this.fx.uniforms.uPunch.value = this.impact.punch
+    this.fx.uniforms.uShake.value = this.impact.shake
+    this.fx.uniforms.uHit.value.copy(this.impact.origin)
 
     this.currentShape()
     this.composer.render()

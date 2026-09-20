@@ -189,12 +189,49 @@ export function magnetic(nodes) {
   }
 }
 
-export function spawnRipple(x, y, color) {
+export function spawnRipple(x, y, color, extraClass = '') {
   const node = document.createElement('span')
-  node.className = 'ripple'
+  node.className = extraClass ? `ripple ${extraClass}` : 'ripple'
   node.style.left = `${x}px`
   node.style.top = `${y}px`
   node.style.borderColor = color
   document.body.appendChild(node)
   node.addEventListener('animationend', () => node.remove())
+}
+
+export function triggerImpact(x, y, color) {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+  spawnRipple(x, y, color)
+  if (reduce) return
+
+  const root = document.documentElement
+  root.classList.remove('is-impact')
+  void root.offsetWidth
+  root.classList.add('is-impact')
+  window.clearTimeout(triggerImpact._t)
+  triggerImpact._t = window.setTimeout(() => root.classList.remove('is-impact'), 720)
+
+  const rings = [
+    { delay: 0, cls: 'ripple-hard', col: '#fff' },
+    { delay: 28, cls: 'ripple-mid', col: color },
+    { delay: 70, cls: 'ripple-soft', col: '#fff' }
+  ]
+  for (const r of rings) {
+    window.setTimeout(() => spawnRipple(x, y, r.col, r.cls), r.delay)
+  }
+
+  for (let i = 0; i < 10; i++) {
+    const shard = document.createElement('span')
+    shard.className = 'impact-shard'
+    const ang = (i / 10) * Math.PI * 2 + Math.random() * 0.4
+    const dist = 90 + Math.random() * 160
+    shard.style.left = `${x}px`
+    shard.style.top = `${y}px`
+    shard.style.setProperty('--dx', `${Math.cos(ang) * dist}px`)
+    shard.style.setProperty('--dy', `${Math.sin(ang) * dist}px`)
+    shard.style.setProperty('--rot', `${ang}rad`)
+    shard.style.background = i % 2 ? '#fff' : color
+    document.body.appendChild(shard)
+    shard.addEventListener('animationend', () => shard.remove())
+  }
 }

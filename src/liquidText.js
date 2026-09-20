@@ -171,7 +171,7 @@ export class LiquidText {
   }
 
   pulse() {
-    this.shock = 1
+    this.shock = 1.35
   }
 
   render(dt) {
@@ -181,7 +181,7 @@ export class LiquidText {
     this.mouse[0] += (this.target[0] - this.mouse[0]) * 0.12
     this.mouse[1] += (this.target[1] - this.mouse[1]) * 0.12
     this.hover += (this.targetHover - this.hover) * 0.08
-    this.shock += (0 - this.shock) * 0.06
+    this.shock += (0 - this.shock) * 0.045
     gl.useProgram(this.prog)
     gl.enable(gl.BLEND)
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
