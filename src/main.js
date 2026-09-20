@@ -76,6 +76,7 @@ async function start() {
     world.setProgress(t)
     world.setAudio(level)
     liquid.stencil = world.impact.stencil
+    document.documentElement.classList.toggle('is-impact', world.impact.stencil > 0.5)
     world.render()
     liquid.render(dt)
     if (uiReady) {

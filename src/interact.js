@@ -202,14 +202,6 @@ export function spawnRipple(x, y, color, extraClass = '') {
 export function triggerImpact(x, y, color) {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
   if (reduce) return
-
-  const root = document.documentElement
-  root.classList.remove('is-impact')
-  void root.offsetWidth
-  root.classList.add('is-impact')
-  window.clearTimeout(triggerImpact._t)
-  triggerImpact._t = window.setTimeout(() => root.classList.remove('is-impact'), 200)
-
   window.setTimeout(() => spawnRipple(x, y, '#ffffff', 'ripple-hard'), 190)
   window.setTimeout(() => spawnRipple(x, y, color || '#ffffff', 'ripple-mid'), 240)
 }

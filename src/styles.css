@@ -192,6 +192,7 @@ button {
 html.is-impact,
 html.is-impact body {
   background: #000;
+  transform: none !important;
 }
 
 html.is-impact .grain,
@@ -212,15 +213,17 @@ html.is-impact .hero-meta,
 html.is-impact .brand,
 html.is-impact .nav,
 html.is-impact .year,
-html.is-impact .sonic {
+html.is-impact .sonic,
+html.is-impact main,
+html.is-impact p,
+html.is-impact a,
+html.is-impact h2,
+html.is-impact h3 {
   color: #fff !important;
   text-shadow: none !important;
   background: transparent !important;
   border-color: #fff !important;
-}
-
-html.is-impact .liquid-text {
-  filter: grayscale(1) contrast(12) brightness(1.8);
+  filter: none !important;
 }
 
 .loader {

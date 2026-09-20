@@ -211,12 +211,17 @@ export const particleFragment = /* glsl */ `
   varying float vMix;
   uniform vec3 uColorA;
   uniform vec3 uColorB;
+  uniform float uStencil;
 
   void main() {
     vec2 p = gl_PointCoord * 2.0 - 1.0;
     float d = dot(p, p);
     if (d > 1.0) discard;
     float glow = pow(1.0 - d, 2.4);
+    if (uStencil > 0.5) {
+      gl_FragColor = vec4(1.0, 1.0, 1.0, glow);
+      return;
+    }
     vec3 col = mix(uColorA, uColorB, vMix);
     gl_FragColor = vec4(col, glow * vAlpha * 0.9);
   }
@@ -447,7 +452,7 @@ export const cinematicShader = {
       col += (n - 0.5) * 0.03 * live;
 
       float luma = max(col.r, max(col.g, col.b));
-      float cut = step(0.18, luma);
+      float cut = step(0.04, luma);
       col = mix(col, vec3(cut), uStencil);
       col *= 1.0 - uBlank;
       col += vec3(1.0) * ring * 0.4;

@@ -380,7 +380,7 @@ export class World {
       this.shock = imp.punch
       return 1
     }
-    if (imp.age < 0.18) {
+    if (imp.age < 0.22) {
       imp.blank = 0
       imp.stencil = 1
       imp.flash = 0
@@ -556,19 +556,30 @@ export class World {
     this.core.scale.setScalar(1 + this.impact.punch * 0.35 * (1 - this.impact.stencil))
 
     const cut = this.impact.stencil > 0.5
-    this.mesh.visible = cut ? false : true
-    this.particles.visible = cut ? false : true
-    this.nebula.visible = cut ? false : true
-    this.grid.visible = cut ? false : true
-    this.core.visible = cut ? false : true
-    this.sparks.visible = cut ? false : true
-    this.ribbons.visible = cut ? false : true
-    this.shockRing.visible = cut ? false : this.impact.punch > 0.02
-    this.shockRing2.visible = cut ? false : this.impact.punch > 0.02
+    this.mesh.visible = true
+    this.wire.visible = true
+    this.particles.visible = true
+    this.satellites.visible = true
+    this.fieldLines.visible = true
+    this.stars.visible = !cut
+    this.grid.visible = !cut
+    this.core.visible = !cut
+    this.sparks.visible = !cut
+    this.ribbons.visible = !cut
+    if (this.nebula) this.nebula.visible = !cut
+    this.shockRing.visible = !cut && this.impact.punch > 0.02
+    this.shockRing2.visible = !cut && this.impact.punch > 0.02
     this.renderer.setClearColor(cut ? 0x000000 : 0x050506, 1)
     if (cut) {
       this.fieldLines.material.color.set('#ffffff')
-      for (const sat of this.satellites.children) sat.material.color.set('#ffffff')
+      this.fieldLines.material.opacity = 0.95
+      for (const sat of this.satellites.children) {
+        sat.material.color.set('#ffffff')
+        sat.material.opacity = 1
+      }
+    } else {
+      this.fieldLines.material.opacity = 0.22
+      for (const sat of this.satellites.children) sat.material.opacity = 0.9
     }
 
     if (cut) {
