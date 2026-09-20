@@ -2,9 +2,18 @@ import './styles.css'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import Lenis from 'lenis'
-import { World } from './scene.js'
+import { World, PALETTES } from './scene.js'
 import { LiquidText } from './liquidText.js'
-import { createCursor, splitWarp, renderWarps, tiltCards, magnetic } from './interact.js'
+import { SonicField } from './audio.js'
+import {
+  createCursor,
+  splitWarp,
+  renderWarps,
+  revealWarps,
+  tiltCards,
+  magnetic,
+  spawnRipple
+} from './interact.js'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -14,8 +23,10 @@ const loaderBar = document.getElementById('loader-bar')
 const shapeName = document.getElementById('shape-name')
 const scrollRead = document.getElementById('scroll-read')
 const ptrRead = document.getElementById('ptr-read')
+const energyRead = document.getElementById('energy-read')
 const progressBar = document.getElementById('progress-bar')
-
+const sonicBtn = document.getElementById('sonic')
+const dots = document.getElementById('shape-dots')
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
 
 function bootLoader() {
@@ -23,31 +34,86 @@ function bootLoader() {
     const obj = { n: 0 }
     gsap.to(obj, {
       n: 100,
-      duration: reduce ? 0.2 : 1.6,
-      ease: 'power2.inOut',
+      duration: reduce ? 0.15 : 2.1,
+      ease: 'power3.inOut',
       onUpdate() {
         const v = Math.round(obj.n)
-        loaderCount.textContent = String(v).padStart(2, '0')
+        const glitch = !reduce && Math.random() > 0.86 ? Math.floor(Math.random() * 100) : v
+        loaderCount.textContent = String(glitch).padStart(2, '0')
         loaderBar.style.width = `${v}%`
       },
-      onComplete: resolve
+      onComplete() {
+        loaderCount.textContent = '100'
+        resolve()
+      }
     })
   })
 }
 
 async function start() {
-  await Promise.all([document.fonts.ready, bootLoader()])
+  const world = new World(document.getElementById('world'))
+  const liquid = new LiquidText(document.getElementById('liquid-text'), ['JAYDEN', 'CHEN'])
+  const sonic = new SonicField()
+  const cursor = createCursor()
+  const ptr = { x: 0, y: 0 }
+  let last = performance.now()
+  let lastShape = ''
+  let warps = []
+  let lenis = { scroll: 0 }
+  let uiReady = false
+
+  window.addEventListener('pointermove', (e) => {
+    ptr.x = e.clientX / innerWidth
+    ptr.y = e.clientY / innerHeight
+  })
+
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000)
+    last = now
+    const limit = Math.max(1, document.documentElement.scrollHeight - innerHeight)
+    const t = Math.min(1, Math.max(0, (lenis.scroll || window.scrollY) / limit))
+    const level = sonic.update(t, world.shock)
+    world.setProgress(t)
+    world.setAudio(level)
+    world.render()
+    liquid.render(dt)
+    if (uiReady) {
+      const accent = `#${world.palette.b.getHexString()}`
+      cursor.render(accent)
+      renderWarps(warps, now / 1000)
+      const pct = Math.round(t * 100)
+      progressBar.style.height = `${pct}%`
+      scrollRead.textContent = `${String(pct).padStart(3, '0')}%`
+      shapeName.textContent = world.shapeName
+      ptrRead.textContent = `${ptr.x.toFixed(2)} ${ptr.y.toFixed(2)}`
+      energyRead.textContent = `${Math.round(world.shock * 100).toString().padStart(3, '0')}%`
+      if (world.shapeName !== lastShape) {
+        lastShape = world.shapeName
+        document.documentElement.style.setProperty('--accent', accent)
+        document.documentElement.style.setProperty('--accent-2', `#${world.palette.c.getHexString()}`)
+        document.documentElement.style.setProperty('--accent-3', `#${world.palette.a.getHexString()}`)
+        liquid.setTint(accent)
+        dots?.querySelectorAll('i').forEach((el, i) => el.classList.toggle('is-on', i === world.shapeIndex))
+      }
+    }
+    requestAnimationFrame(frame)
+  }
+  requestAnimationFrame(frame)
+
+  await Promise.all([document.fonts.ready.then(() => liquid.drawTexture()), bootLoader()])
   loader.classList.add('is-done')
 
-  const world = new World(document.getElementById('world'))
-  const liquid = new LiquidText(document.getElementById('liquid-text'), 'JAYDEN')
-  const cursor = createCursor()
-  const warps = [...document.querySelectorAll('[data-warp]')].map(splitWarp)
+  warps = [...document.querySelectorAll('[data-warp]')].map(splitWarp)
+  revealWarps(warps, gsap, ScrollTrigger)
   tiltCards(document.querySelectorAll('[data-tilt]'))
   magnetic(document.querySelectorAll('[data-magnetic]'))
 
-  const lenis = new Lenis({
-    lerp: reduce ? 1 : 0.085,
+  if (dots) {
+    dots.innerHTML = PALETTES.map((_, i) => `<i data-i="${i}"></i>`).join('')
+  }
+
+  lenis = new Lenis({
+    lerp: reduce ? 1 : 0.075,
     smoothWheel: !reduce
   })
   lenis.on('scroll', ScrollTrigger.update)
@@ -58,12 +124,12 @@ async function start() {
 
   if (!reduce) {
     gsap.to('#rail', {
-      x: () => -(document.getElementById('rail').scrollWidth - innerWidth + 48),
+      x: () => -(document.getElementById('rail').scrollWidth - innerWidth + 64),
       ease: 'none',
       scrollTrigger: {
         trigger: '#studies',
         start: 'top top',
-        end: () => `+=${Math.max(innerWidth, 1400)}`,
+        end: () => `+=${Math.max(innerWidth * 1.2, 1600)}`,
         pin: true,
         scrub: 1,
         anticipatePin: 1
@@ -71,31 +137,19 @@ async function start() {
     })
   }
 
-  let last = performance.now()
-  const ptr = { x: 0, y: 0 }
-  window.addEventListener('pointermove', (e) => {
-    ptr.x = e.clientX / innerWidth
-    ptr.y = e.clientY / innerHeight
+  sonicBtn?.addEventListener('click', async () => {
+    const on = await sonic.toggle()
+    sonicBtn.classList.toggle('is-on', on)
+    sonicBtn.textContent = on ? 'Sonic on' : 'Sonic'
   })
 
-  function frame(now) {
-    const dt = Math.min(0.05, (now - last) / 1000)
-    last = now
-    const limit = Math.max(1, document.documentElement.scrollHeight - innerHeight)
-    const t = Math.min(1, Math.max(0, window.scrollY / limit))
-    world.setProgress(t)
-    world.render()
-    liquid.render(dt)
-    cursor.render()
-    renderWarps(warps)
-    const pct = Math.round(t * 100)
-    progressBar.style.height = `${pct}%`
-    scrollRead.textContent = `${String(pct).padStart(3, '0')}%`
-    shapeName.textContent = world.shapeName
-    ptrRead.textContent = `${ptr.x.toFixed(2)} ${ptr.y.toFixed(2)}`
-    requestAnimationFrame(frame)
-  }
-  requestAnimationFrame(frame)
+  window.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('a, button')) return
+    liquid.pulse()
+    spawnRipple(e.clientX, e.clientY, getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())
+  })
+
+  uiReady = true
 }
 
 start()

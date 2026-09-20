@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import {
   meshVertex,
@@ -9,10 +10,29 @@ import {
   particleVertex,
   particleFragment,
   starVertex,
-  starFragment
+  starFragment,
+  gridVertex,
+  gridFragment,
+  nebulaVertex,
+  nebulaFragment,
+  ribbonVertex,
+  ribbonFragment,
+  coreVertex,
+  coreFragment,
+  cinematicShader
 } from './shaders.js'
 
-const SHAPES = ['SPHERE', 'TORUS', 'KNOT', 'HELIX', 'CRYSTAL', 'WAVE']
+export const SHAPES = ['SPHERE', 'TORUS', 'KNOT', 'HELIX', 'CRYSTAL', 'MÖBIUS', 'GALAXY']
+
+export const PALETTES = [
+  { a: '#6ee7ff', b: '#d6ff3f', c: '#ff5a36' },
+  { a: '#ff7ad9', b: '#ffe08a', c: '#79e7ff' },
+  { a: '#b38cff', b: '#79e7ff', c: '#ff8bd2' },
+  { a: '#d6ff3f', b: '#ff7a3c', c: '#9bffce' },
+  { a: '#c8f4ff', b: '#ffffff', c: '#7ad7ff' },
+  { a: '#ff5a36', b: '#ffd36e', c: '#ff8ad4' },
+  { a: '#7c5cff', b: '#79e7ff', c: '#ff5a36' }
+]
 
 function parametricGeometry(segU, segV) {
   const geo = new THREE.BufferGeometry()
@@ -21,9 +41,7 @@ function parametricGeometry(segU, segV) {
   const idx = []
   for (let i = 0; i <= segU; i++) {
     for (let j = 0; j <= segV; j++) {
-      const u = i / segU
-      const v = j / segV
-      uv.push(u, v)
+      uv.push(i / segU, j / segV)
       pos.push(0, 0, 0)
     }
   }
@@ -58,148 +76,217 @@ function particleGeometry(count) {
   return geo
 }
 
+function shaderMat(vs, fs, uniforms, extra = {}) {
+  return new THREE.ShaderMaterial({
+    vertexShader: vs,
+    fragmentShader: fs,
+    uniforms,
+    transparent: true,
+    toneMapped: false,
+    ...extra
+  })
+}
+
 export class World {
   constructor(canvas) {
     this.canvas = canvas
     this.clock = new THREE.Clock()
     this.progress = 0
     this.targetProgress = 0
-    this.mouse = new THREE.Vector2(0, 0)
-    this.targetMouse = new THREE.Vector2(0, 0)
+    this.mouse = new THREE.Vector2()
+    this.targetMouse = new THREE.Vector2()
     this.hover = 0
     this.dragging = false
-    this.drag = new THREE.Vector2(0, 0)
+    this.drag = new THREE.Vector2()
+    this.shock = 0
+    this.audio = 0
+    this.intro = 0
+    this.scrollVel = 0
+    this.lastProgress = 0
     this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
     this.mobile = innerWidth < 800
     this.shapeName = SHAPES[0]
+    this.shapeIndex = 0
+    this.palette = { a: new THREE.Color(PALETTES[0].a), b: new THREE.Color(PALETTES[0].b), c: new THREE.Color(PALETTES[0].c) }
+    this.tmpA = new THREE.Color()
+    this.tmpB = new THREE.Color()
+    this.tmpC = new THREE.Color()
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: true,
+      antialias: !this.mobile,
       alpha: true,
       powerPreference: 'high-performance'
     })
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, this.mobile ? 1.25 : 1.75))
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, this.mobile ? 1.1 : 1.5))
     this.renderer.setSize(innerWidth, innerHeight)
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.05
+    this.renderer.toneMapping = THREE.NoToneMapping
+    this.renderer.setClearColor(0x050506, 1)
 
     this.scene = new THREE.Scene()
-    this.camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 80)
-    this.camera.position.set(0, 0.2, 6.2)
+    this.camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.08, 120)
+    this.camera.position.set(0, 0.25, 5.4)
 
-    const segs = this.mobile ? 56 : 96
+    const segs = this.mobile ? 48 : 110
     this.uniforms = {
       uProgress: { value: 0 },
       uTime: { value: 0 },
-      uMouse: { value: new THREE.Vector2(0, 0) },
+      uMouse: { value: new THREE.Vector2() },
       uHover: { value: 0 },
-      uColorA: { value: new THREE.Color('#79e7ff') },
-      uColorB: { value: new THREE.Color('#d6ff3f') },
-      uColorC: { value: new THREE.Color('#ff5a36') },
-      uSize: { value: this.mobile ? 0.9 : 1.15 }
+      uShock: { value: 0 },
+      uAudio: { value: 0 },
+      uColorA: { value: new THREE.Color(PALETTES[0].a) },
+      uColorB: { value: new THREE.Color(PALETTES[0].b) },
+      uColorC: { value: new THREE.Color(PALETTES[0].c) },
+      uSize: { value: this.mobile ? 0.85 : 1.12 }
     }
 
-    const mat = new THREE.ShaderMaterial({
-      vertexShader: meshVertex,
-      fragmentShader: meshFragment,
-      uniforms: this.uniforms,
-      transparent: true,
-      side: THREE.DoubleSide,
-      toneMapped: false
-    })
-    this.mesh = new THREE.Mesh(parametricGeometry(segs, segs), mat)
+    this.mesh = new THREE.Mesh(
+      parametricGeometry(segs, segs),
+      shaderMat(meshVertex, meshFragment, this.uniforms, { side: THREE.DoubleSide, depthWrite: false })
+    )
     this.scene.add(this.mesh)
 
-    const wire = new THREE.ShaderMaterial({
-      vertexShader: meshVertex,
-      fragmentShader: meshFragment,
-      uniforms: this.uniforms,
-      transparent: true,
-      side: THREE.DoubleSide,
-      wireframe: true,
-      toneMapped: false
-    })
-    this.wire = new THREE.Mesh(this.mesh.geometry, wire)
-    this.wire.scale.setScalar(1.012)
+    this.wireUniforms = THREE.UniformsUtils.clone(this.uniforms)
+    this.wire = new THREE.Mesh(
+      this.mesh.geometry,
+      shaderMat(meshVertex, meshFragment, this.wireUniforms, {
+        side: THREE.DoubleSide,
+        wireframe: true,
+        depthWrite: false
+      })
+    )
+    this.wire.scale.setScalar(1.018)
     this.scene.add(this.wire)
 
-    const pCount = this.mobile ? 2200 : 6500
+    const pCount = this.mobile ? 1400 : 4800
     this.particles = new THREE.Points(
       particleGeometry(pCount),
-      new THREE.ShaderMaterial({
-        vertexShader: particleVertex,
-        fragmentShader: particleFragment,
-        uniforms: this.uniforms,
-        transparent: true,
+      shaderMat(particleVertex, particleFragment, this.uniforms, {
         depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        toneMapped: false
+        blending: THREE.AdditiveBlending
       })
     )
     this.scene.add(this.particles)
 
-    const starCount = this.mobile ? 800 : 1800
+    const sparkCount = this.mobile ? 250 : 700
+    this.sparks = new THREE.Points(
+      particleGeometry(sparkCount),
+      shaderMat(particleVertex, particleFragment, this.uniforms, {
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      })
+    )
+    this.sparks.material.uniforms = this.uniforms
+    this.sparks.scale.setScalar(1.35)
+    this.scene.add(this.sparks)
+
+    const starCount = this.mobile ? 700 : 2200
     const stars = new Float32Array(starCount * 3)
     for (let i = 0; i < starCount; i++) {
-      stars[i * 3] = (Math.random() - 0.5) * 40
-      stars[i * 3 + 1] = (Math.random() - 0.5) * 24
-      stars[i * 3 + 2] = (Math.random() - 0.5) * 30 - 8
+      stars[i * 3] = (Math.random() - 0.5) * 50
+      stars[i * 3 + 1] = (Math.random() - 0.5) * 28
+      stars[i * 3 + 2] = (Math.random() - 0.5) * 36 - 6
     }
     const starGeo = new THREE.BufferGeometry()
     starGeo.setAttribute('position', new THREE.BufferAttribute(stars, 3))
     this.stars = new THREE.Points(
       starGeo,
-      new THREE.ShaderMaterial({
-        vertexShader: starVertex,
-        fragmentShader: starFragment,
-        uniforms: this.uniforms,
-        transparent: true,
+      shaderMat(starVertex, starFragment, this.uniforms, {
         depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        toneMapped: false
+        blending: THREE.AdditiveBlending
       })
     )
     this.scene.add(this.stars)
 
-    this.satellites = new THREE.Group()
-    const satGeo = new THREE.IcosahedronGeometry(0.07, 0)
-    const satMat = new THREE.MeshStandardMaterial({
-      color: '#d6ff3f',
-      emissive: '#3a4a10',
-      metalness: 0.7,
-      roughness: 0.25
+    this.grid = new THREE.Mesh(
+      new THREE.PlaneGeometry(70, 70, 1, 1),
+      shaderMat(gridVertex, gridFragment, this.uniforms, {
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide
+      })
+    )
+    this.grid.rotation.x = -Math.PI / 2
+    this.grid.position.y = -2.35
+    this.scene.add(this.grid)
+
+    if (!this.mobile) {
+      this.nebula = new THREE.Mesh(
+        new THREE.SphereGeometry(32, 32, 24),
+        shaderMat(nebulaVertex, nebulaFragment, this.uniforms, {
+          side: THREE.BackSide,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending
+        })
+      )
+      this.scene.add(this.nebula)
+    }
+
+    this.ribbons = new THREE.Group()
+    const ribbonMat = shaderMat(ribbonVertex, ribbonFragment, this.uniforms, {
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide
     })
-    this.satCount = this.mobile ? 8 : 14
+    const r1 = new THREE.Mesh(new THREE.TorusKnotGeometry(1.85, 0.012, this.mobile ? 80 : 220, 6, 2, 5), ribbonMat)
+    const r2 = new THREE.Mesh(new THREE.TorusKnotGeometry(2.05, 0.01, this.mobile ? 80 : 220, 6, 3, 7), ribbonMat)
+    r2.rotation.x = Math.PI / 2
+    this.ribbons.add(r1, r2)
+    this.scene.add(this.ribbons)
+
+    this.core = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.16, 1),
+      shaderMat(coreVertex, coreFragment, this.uniforms, {
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      })
+    )
+    this.scene.add(this.core)
+
+    this.satellites = new THREE.Group()
+    const satGeo = new THREE.OctahedronGeometry(0.055, 0)
+    const satMat = new THREE.MeshBasicMaterial({ color: '#d6ff3f', transparent: true, opacity: 0.9 })
+    this.satCount = this.mobile ? 7 : 16
     for (let i = 0; i < this.satCount; i++) {
-      const m = new THREE.Mesh(satGeo, satMat)
-      this.satellites.add(m)
+      this.satellites.add(new THREE.Mesh(satGeo, satMat.clone()))
     }
     this.scene.add(this.satellites)
-    this.scene.add(new THREE.AmbientLight('#9bb4c8', 0.45))
-    const key = new THREE.PointLight('#79e7ff', 12, 18)
-    key.position.set(3, 2, 4)
-    this.scene.add(key)
-    const fill = new THREE.PointLight('#ff5a36', 8, 16)
-    fill.position.set(-3, -1, 2)
-    this.scene.add(fill)
+
+    const linePos = new Float32Array(this.satCount * 6)
+    const lineGeo = new THREE.BufferGeometry()
+    lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3))
+    this.fieldLines = new THREE.LineSegments(
+      lineGeo,
+      new THREE.LineBasicMaterial({ color: '#79e7ff', transparent: true, opacity: 0.22 })
+    )
+    this.scene.add(this.fieldLines)
+
+    this.key = new THREE.PointLight('#79e7ff', 14, 20)
+    this.fill = new THREE.PointLight('#ff5a36', 9, 18)
+    this.mouseLight = new THREE.PointLight('#d6ff3f', 8, 12)
+    this.key.position.set(3, 2.2, 4)
+    this.fill.position.set(-3.2, -1.2, 2.2)
+    this.scene.add(this.key, this.fill, this.mouseLight, new THREE.AmbientLight('#8aa4b8', 0.28))
 
     this.composer = new EffectComposer(this.renderer)
     this.composer.addPass(new RenderPass(this.scene, this.camera))
     this.bloom = new UnrealBloomPass(
       new THREE.Vector2(innerWidth, innerHeight),
-      this.mobile ? 0.22 : 0.34,
-      0.48,
-      0.2
+      this.mobile ? 0.1 : 0.14,
+      0.38,
+      0.34
     )
     this.composer.addPass(this.bloom)
     this.composer.addPass(new OutputPass())
+    this.fx = new ShaderPass(cinematicShader)
+    this.fx.uniforms.uRes.value = new THREE.Vector2(innerWidth, innerHeight)
+    this.fx.uniforms.uMouse.value = new THREE.Vector2()
+    this.composer.addPass(this.fx)
 
     this._onPointer = this.onPointer.bind(this)
-    this._onDown = () => {
-      this.dragging = true
-    }
+    this._onDown = this.onDown.bind(this)
     this._onUp = () => {
       this.dragging = false
     }
@@ -215,17 +302,32 @@ export class World {
     this.targetMouse.set(x, y)
     this.hover = 1
     if (this.dragging) {
-      this.drag.x += e.movementX * 0.004
-      this.drag.y += e.movementY * 0.004
+      this.drag.x += e.movementX * 0.0045
+      this.drag.y += e.movementY * 0.0045
     }
+  }
+
+  onDown(e) {
+    this.dragging = true
+    if (e.target.closest && e.target.closest('a, button')) return
+    this.shock = 1
+  }
+
+  pulse() {
+    this.shock = 1
   }
 
   setProgress(t) {
     this.targetProgress = Math.min(Math.max(t, 0), 1)
   }
 
+  setAudio(v) {
+    this.audio = v
+  }
+
   currentShape() {
-    const i = Math.min(SHAPES.length - 1, Math.floor(Math.min(this.targetProgress, 0.999) * 5))
+    const i = Math.min(SHAPES.length - 1, Math.round(Math.min(this.progress, 1) * (SHAPES.length - 1)))
+    this.shapeIndex = i
     this.shapeName = SHAPES[i]
     return this.shapeName
   }
@@ -238,53 +340,111 @@ export class World {
     this.renderer.setSize(w, h)
     this.composer.setSize(w, h)
     this.bloom.setSize(w, h)
+    this.fx.uniforms.uRes.value.set(w, h)
   }
 
   render() {
-    const dt = this.clock.getDelta()
+    const dt = Math.min(0.05, this.clock.getDelta())
     const t = this.clock.elapsedTime
-    const ease = this.reduced ? 1 : 1 - Math.pow(0.001, dt)
-    this.progress += (this.targetProgress - this.progress) * (this.reduced ? 1 : 0.08)
-    this.mouse.lerp(this.targetMouse, 0.08)
-    this.hover += ((this.dragging ? 1 : 0.35) - this.hover) * 0.05
+    this.progress += (this.targetProgress - this.progress) * (this.reduced ? 1 : 0.07)
+    this.scrollVel += (this.progress - this.lastProgress - this.scrollVel) * 0.2
+    this.lastProgress = this.progress
+    this.mouse.lerp(this.targetMouse, 0.09)
+    this.hover += ((this.dragging ? 1 : 0.4) - this.hover) * 0.05
+    this.shock += (0 - this.shock) * (this.reduced ? 1 : 0.045)
+    this.intro = Math.min(1, this.intro + dt * 0.42)
 
-    this.uniforms.uProgress.value = this.progress
+    const p = this.progress
+    const seg = p * 6
+    const i0 = Math.min(6, Math.floor(seg))
+    const i1 = Math.min(6, i0 + 1)
+    const f = seg - i0
+    this.palette.a.set(PALETTES[i0].a).lerp(this.tmpA.set(PALETTES[i1].a), f)
+    this.palette.b.set(PALETTES[i0].b).lerp(this.tmpB.set(PALETTES[i1].b), f)
+    this.palette.c.set(PALETTES[i0].c).lerp(this.tmpC.set(PALETTES[i1].c), f)
+
+    this.uniforms.uProgress.value = p
     this.uniforms.uTime.value = t
     this.uniforms.uMouse.value.copy(this.mouse)
     this.uniforms.uHover.value = this.hover
+    this.uniforms.uShock.value = this.shock
+    this.uniforms.uAudio.value = this.audio
+    this.uniforms.uColorA.value.copy(this.palette.a)
+    this.uniforms.uColorB.value.copy(this.palette.b)
+    this.uniforms.uColorC.value.copy(this.palette.c)
 
-    const p = this.progress
-    const angle = p * Math.PI * 1.25 + this.drag.x
-    const dist = 6.1 - p * 1.35
-    const cy = 0.25 + Math.sin(p * Math.PI) * 1.05 - this.drag.y
-    this.camera.position.x = Math.sin(angle) * dist + this.mouse.x * 0.45
+    this.wireUniforms.uProgress.value = Math.max(0, p - 0.065)
+    this.wireUniforms.uTime.value = t
+    this.wireUniforms.uMouse.value.copy(this.mouse)
+    this.wireUniforms.uHover.value = this.hover
+    this.wireUniforms.uShock.value = this.shock
+    this.wireUniforms.uAudio.value = this.audio
+    this.wireUniforms.uColorA.value.copy(this.palette.a)
+    this.wireUniforms.uColorB.value.copy(this.palette.b)
+    this.wireUniforms.uColorC.value.copy(this.palette.c)
+
+    const introEase = 1 - Math.pow(1 - this.intro, 3)
+    const angle = p * Math.PI * 1.7 + this.drag.x + Math.sin(t * 0.12) * 0.08
+    const dist = THREE.MathUtils.lerp(4.6, 6.5, introEase) - Math.sin(p * Math.PI) * 1.15 - this.shock * 0.2
+    const cy = 0.15 + Math.sin(p * Math.PI) * 1.25 - this.drag.y
+    this.camera.position.x = Math.sin(angle) * dist + this.mouse.x * 0.55
     this.camera.position.z = Math.cos(angle) * dist
-    this.camera.position.y = cy + this.mouse.y * 0.25
-    this.camera.lookAt(0, 0, 0)
+    this.camera.position.y = cy + this.mouse.y * 0.32
+    this.camera.fov = 38 + Math.sin(p * Math.PI) * 8 + this.shock * 4
+    this.camera.updateProjectionMatrix()
+    this.camera.lookAt(0, Math.sin(p * Math.PI) * 0.2, 0)
+    this.camera.rotateZ(this.scrollVel * 1.8 + this.mouse.x * 0.018)
 
-    this.mesh.rotation.y = t * 0.08 + this.drag.x * 0.4
+    this.mesh.rotation.y = t * 0.07 + this.drag.x * 0.45
+    this.mesh.rotation.x = Math.sin(t * 0.11) * 0.08
     this.wire.rotation.copy(this.mesh.rotation)
-    this.particles.rotation.y = this.mesh.rotation.y * 0.85
-    this.stars.rotation.y = t * 0.012
+    this.particles.rotation.y = this.mesh.rotation.y * 0.82
+    this.sparks.rotation.y = -this.mesh.rotation.y * 0.5
+    this.stars.rotation.y = t * 0.014
+    this.ribbons.rotation.y = t * 0.18
+    this.ribbons.rotation.x = t * 0.07
+    this.ribbons.scale.setScalar(1 + this.audio * 0.12 + this.shock * 0.2)
+    this.core.rotation.y = t * 0.6
+    this.core.rotation.x = t * 0.4
+    this.grid.position.y = -2.35 + Math.sin(p * Math.PI) * 0.15
+
+    this.key.color.copy(this.palette.a)
+    this.fill.color.copy(this.palette.c)
+    this.mouseLight.color.copy(this.palette.b)
+    this.mouseLight.position.set(this.mouse.x * 4, this.mouse.y * 2.5, 3)
 
     const sats = this.satellites.children
+    const lp = this.fieldLines.geometry.attributes.position.array
     for (let i = 0; i < sats.length; i++) {
       const u = i / sats.length
-      const spin = t * 0.35 + u * Math.PI * 2
-      const ring = 2.1
-      const helixY = (u - 0.5) * 3.2
+      const spin = t * 0.4 + u * Math.PI * 2
+      const ring = 2.15 + Math.sin(t + u * 8) * 0.12
+      const helixY = (u - 0.5) * 3.4
       const ax = Math.cos(spin) * ring
       const az = Math.sin(spin) * ring
-      const bx = Math.cos(spin * 1.7) * (0.7 + u)
+      const bx = Math.cos(spin * 1.7) * (0.75 + u)
       const by = helixY
-      const bz = Math.sin(spin * 1.7) * (0.7 + u)
-      const f = p
-      sats[i].position.set(
-        ax * (1 - f) + bx * f,
-        Math.sin(spin + t) * 0.25 * (1 - f) + by * f,
-        az * (1 - f) + bz * f
-      )
+      const bz = Math.sin(spin * 1.7) * (0.75 + u)
+      const x = ax * (1 - p) + bx * p
+      const y = Math.sin(spin + t) * 0.28 * (1 - p) + by * p
+      const z = az * (1 - p) + bz * p
+      sats[i].position.set(x, y, z)
+      sats[i].material.color.copy(i % 2 ? this.palette.b : this.palette.a)
+      lp[i * 6] = 0
+      lp[i * 6 + 1] = 0
+      lp[i * 6 + 2] = 0
+      lp[i * 6 + 3] = x
+      lp[i * 6 + 4] = y
+      lp[i * 6 + 5] = z
     }
+    this.fieldLines.geometry.attributes.position.needsUpdate = true
+    this.fieldLines.material.color.copy(this.palette.a)
+
+    this.fx.uniforms.uTime.value = t
+    this.fx.uniforms.uProgress.value = p
+    this.fx.uniforms.uShock.value = this.shock
+    this.fx.uniforms.uMouse.value.copy(this.mouse)
+    this.fx.uniforms.uAberration.value = 0.0024 + Math.abs(this.scrollVel) * 0.08 + this.shock * 0.01
 
     this.currentShape()
     this.composer.render()

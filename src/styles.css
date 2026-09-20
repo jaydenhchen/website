@@ -1,5 +1,5 @@
 :root {
-  --bg: #060607;
+  --bg: #050506;
   --fg: #efeae2;
   --muted: #9a948c;
   --accent: #d6ff3f;
@@ -44,7 +44,8 @@ body.is-touch {
   cursor: auto;
 }
 
-body.is-touch .cursor {
+body.is-touch .cursor,
+body.is-touch .trail {
   display: none;
 }
 
@@ -58,6 +59,14 @@ a {
   text-decoration: none;
 }
 
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: none;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -69,17 +78,26 @@ a {
   border: 0;
 }
 
-.world {
+.world,
+.trail {
   position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
-  z-index: 0;
   pointer-events: none;
 }
 
+.world {
+  z-index: 0;
+}
+
+.trail {
+  z-index: 45;
+}
+
 .grain,
-.vignette {
+.vignette,
+.scanlines {
   position: fixed;
   inset: 0;
   pointer-events: none;
@@ -87,13 +105,23 @@ a {
 }
 
 .grain {
-  opacity: 0.09;
+  opacity: 0.1;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.9'/%3E%3C/svg%3E");
 }
 
 .vignette {
-  background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.55) 100%);
+  background: radial-gradient(ellipse at center, transparent 38%, rgba(0, 0, 0, 0.62) 100%);
+}
+
+.scanlines {
+  opacity: 0.07;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 2px,
+    rgba(0, 0, 0, 0.35) 2px 3px
+  );
+  mix-blend-mode: multiply;
 }
 
 .cursor {
@@ -113,15 +141,15 @@ a {
 }
 
 .cursor-ring {
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   border: 1px solid #fff;
   transition: width 0.35s, height 0.35s, background 0.35s;
 }
 
 .cursor.is-hover .cursor-ring {
-  width: 72px;
-  height: 72px;
+  width: 84px;
+  height: 84px;
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -131,14 +159,35 @@ a {
   background: #fff;
 }
 
+.ripple {
+  position: fixed;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 70;
+  transform: translate(-50%, -50%);
+  animation: ripple 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes ripple {
+  to {
+    width: 280px;
+    height: 280px;
+    opacity: 0;
+  }
+}
+
 .loader {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: var(--bg);
+  background: rgba(5, 5, 6, 0.62);
+  backdrop-filter: blur(14px);
   display: grid;
   place-items: center;
-  transition: opacity 0.8s ease, visibility 0.8s;
+  transition: opacity 1s ease, visibility 1s;
 }
 
 .loader.is-done {
@@ -149,10 +198,11 @@ a {
 
 .loader-inner {
   text-align: center;
-  width: min(420px, 80vw);
+  width: min(460px, 82vw);
 }
 
-.loader-kicker {
+.loader-kicker,
+.loader-note {
   letter-spacing: 0.28em;
   text-transform: uppercase;
   font-size: 0.68rem;
@@ -170,6 +220,7 @@ a {
   height: 1px;
   background: var(--line);
   position: relative;
+  margin-bottom: 1rem;
 }
 
 .loader-bar span {
@@ -189,8 +240,7 @@ a {
   align-items: center;
   justify-content: space-between;
   padding: 1.1rem var(--pad);
-  mix-blend-mode: difference;
-  color: #fff;
+  color: #efeae2;
 }
 
 .brand {
@@ -225,6 +275,26 @@ a {
   width: 100%;
 }
 
+.chrome-right {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+}
+
+.sonic {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  padding: 0.35rem 0.7rem;
+}
+
+.sonic.is-on {
+  background: #fff;
+  color: #111;
+}
+
 .year,
 .mono,
 .kicker {
@@ -246,14 +316,38 @@ a {
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
-  mix-blend-mode: difference;
+  padding: 0.85rem 0.95rem;
+  background: rgba(5, 5, 6, 0.55);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(12px);
+}
+
+.shape-dots {
+  display: flex;
+  gap: 0.35rem;
+  justify-content: flex-end;
+  margin-bottom: 0.3rem;
+}
+
+.shape-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid #fff;
+  display: block;
+  opacity: 0.35;
+}
+
+.shape-dots i.is-on {
+  opacity: 1;
+  background: #fff;
 }
 
 .hud-row {
   display: flex;
   gap: 1rem;
   justify-content: space-between;
-  min-width: 11rem;
+  min-width: 11.5rem;
 }
 
 .hud strong {
@@ -296,7 +390,7 @@ main {
 
 .hero {
   justify-content: flex-end;
-  padding-bottom: 4.5rem;
+  padding-bottom: 4.2rem;
 }
 
 .kicker {
@@ -307,7 +401,7 @@ main {
 .hero-title {
   position: relative;
   width: min(100%, 1400px);
-  height: clamp(140px, 28vw, 320px);
+  height: clamp(180px, 38vw, 420px);
   margin-left: -0.06em;
 }
 
@@ -319,13 +413,13 @@ main {
 }
 
 .lede {
-  max-width: 34rem;
+  max-width: 36rem;
   margin-top: 1.6rem;
   font-family: var(--serif);
   font-size: clamp(1.25rem, 2.2vw, 1.7rem);
   line-height: 1.35;
   color: var(--fg);
-  text-shadow: 0 0 22px rgba(6, 6, 7, 0.92);
+  text-shadow: 0 0 22px rgba(5, 5, 6, 0.92);
 }
 
 .hero-meta {
@@ -369,7 +463,7 @@ main {
   letter-spacing: -0.07em;
   line-height: 0.92;
   max-width: min(96vw, 18em);
-  text-shadow: 0 0 28px rgba(6, 6, 7, 0.9), 0 2px 18px rgba(6, 6, 7, 0.8);
+  text-shadow: 0 0 28px rgba(5, 5, 6, 0.9), 0 2px 18px rgba(5, 5, 6, 0.8);
 }
 
 .warp-line .word {
@@ -381,6 +475,8 @@ main {
   display: inline-block;
   will-change: transform;
   transform-origin: center;
+  letter-spacing: 0;
+  margin: 0 -0.02em;
 }
 
 .copy-grid {
@@ -392,7 +488,7 @@ main {
   font-size: 1.25rem;
   line-height: 1.45;
   color: #d9d3ca;
-  text-shadow: 0 0 22px rgba(6, 6, 7, 0.95);
+  text-shadow: 0 0 16px #050506, 0 0 8px #050506, 0 2px 10px #000;
 }
 
 .chapter-split {
@@ -409,7 +505,9 @@ main {
 .signal-card,
 .study {
   border: 1px solid var(--line);
-  background: rgba(6, 6, 7, 0.38);
+  background:
+    radial-gradient(520px circle at var(--gx, 50%) var(--gy, 0%), rgba(214, 255, 63, 0.12), transparent 42%),
+    rgba(6, 6, 7, 0.42);
   backdrop-filter: blur(16px);
   transform-style: preserve-3d;
   transition: border-color 0.4s;
@@ -422,7 +520,7 @@ main {
 
 .signal-card:hover,
 .study:hover {
-  border-color: rgba(214, 255, 63, 0.45);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .signal-card h3,
@@ -589,7 +687,7 @@ main {
   }
 
   .hero-title {
-    height: clamp(110px, 34vw, 200px);
+    height: clamp(150px, 48vw, 260px);
   }
 
   .study {
@@ -603,7 +701,9 @@ main {
     transition: none !important;
   }
 
-  .cursor {
+  .cursor,
+  .trail,
+  .scanlines {
     display: none;
   }
 

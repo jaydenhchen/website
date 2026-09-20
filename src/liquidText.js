@@ -15,42 +15,55 @@ uniform vec2 uMouse;
 uniform vec2 uRes;
 uniform float uTime;
 uniform float uHover;
+uniform float uShock;
+uniform vec3 uTint;
+
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
 
 void main() {
   vec2 uv = vUv;
   vec2 mouse = uMouse;
   vec2 delta = uv - mouse;
-  float dist = length(delta * vec2(uRes.x / uRes.y, 1.0));
-  float fall = exp(-dist * 6.2) * uHover;
-  float wave = sin(dist * 48.0 - uTime * 4.2);
-  float idle = 0.08 + uHover * 0.92;
-  uv += normalize(delta + 0.0001) * wave * 0.055 * fall;
-  uv.x += sin(uv.y * 28.0 + uTime * 1.4) * 0.01 * idle;
-  uv.y += cos(uv.x * 18.0 - uTime) * 0.008 * idle;
-  vec2 ca = delta * fall * 0.035;
+  float aspect = uRes.x / max(uRes.y, 1.0);
+  float dist = length(delta * vec2(aspect, 1.0));
+  float fall = exp(-dist * 5.4) * uHover;
+  float wave = sin(dist * 52.0 - uTime * 5.0);
+  float idle = 0.12 + uHover * 0.88;
+  uv += normalize(delta + 0.0001) * wave * (0.07 * fall + uShock * 0.04);
+  uv.x += sin(uv.y * 32.0 + uTime * 1.6) * 0.014 * idle;
+  uv.y += cos(uv.x * 20.0 - uTime) * 0.01 * idle;
+
+  float slice = floor(uv.y * 22.0);
+  float glitch = step(0.965, hash(vec2(slice, floor(uTime * 18.0))));
+  uv.x += (hash(vec2(slice, 9.1)) - 0.5) * (0.09 * glitch * uHover + uShock * 0.05);
+
+  vec2 ca = delta * (fall * 0.05 + uShock * 0.03) + vec2(0.004, 0.0) * (uHover + glitch);
   float r = texture2D(uTex, uv + ca).r;
   float g = texture2D(uTex, uv).g;
   float b = texture2D(uTex, uv - ca).b;
-  float a = texture2D(uTex, uv).a;
-  vec2 grain = uv * uRes * 0.4;
-  float n = fract(sin(dot(grain, vec2(12.9898, 78.233))) * 43758.5453);
+  float a = max(max(texture2D(uTex, uv).a, texture2D(uTex, uv + ca).a), texture2D(uTex, uv - ca).a);
   vec3 col = vec3(r, g, b);
-  col += (n - 0.5) * 0.08 * a;
-  col += vec3(0.82, 1.0, 0.28) * fall * 0.35 * a;
+  col += (hash(uv * uRes + uTime) - 0.5) * 0.1 * a;
+  col = mix(col, col * uTint, 0.22 * a);
+  col += uTint * fall * 0.4 * a;
   gl_FragColor = vec4(col, a);
 }
 `
 
 export class LiquidText {
-  constructor(canvas, text = 'JAYDEN') {
+  constructor(canvas, lines = ['JAYDEN', 'CHEN']) {
     this.canvas = canvas
-    this.text = text
-    this.mouse = [0.5, 0.52]
-    this.target = [0.5, 0.52]
-    this.hover = 0
-    this.targetHover = 0
+    this.lines = lines
+    this.mouse = [0.28, 0.55]
+    this.target = [0.28, 0.55]
+    this.hover = 0.2
+    this.targetHover = 0.2
+    this.shock = 0
     this.time = 0
-    this.gl = canvas.getContext('webgl', { premultipliedAlpha: false, alpha: true })
+    this.tint = [0.84, 1.0, 0.25]
+    this.gl = canvas.getContext('webgl', { premultipliedAlpha: false, alpha: true, antialias: true })
     if (!this.gl) return
     this.setup()
     this.drawTexture()
@@ -77,6 +90,8 @@ export class LiquidText {
     this.uRes = gl.getUniformLocation(this.prog, 'uRes')
     this.uTime = gl.getUniformLocation(this.prog, 'uTime')
     this.uHover = gl.getUniformLocation(this.prog, 'uHover')
+    this.uShock = gl.getUniformLocation(this.prog, 'uShock')
+    this.uTint = gl.getUniformLocation(this.prog, 'uTint')
     this.texture = gl.createTexture()
   }
 
@@ -104,15 +119,21 @@ export class LiquidText {
     ctx.fillStyle = '#efeae2'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
-    let size = h * 0.9
-    ctx.letterSpacing = '-0.06em'
+    const size = h * 0.46
+    ctx.letterSpacing = '-0.07em'
     ctx.font = `800 ${size}px Syne, sans-serif`
-    let measured = ctx.measureText(this.text).width
+    let top = this.lines[0]
+    let measured = ctx.measureText(top).width
+    let s1 = size
     if (measured > w * 0.96) {
-      size *= (w * 0.96) / measured
-      ctx.font = `800 ${size}px Syne, sans-serif`
+      s1 *= (w * 0.96) / measured
+      ctx.font = `800 ${s1}px Syne, sans-serif`
     }
-    ctx.fillText(this.text, w * 0.02, h * 0.54)
+    ctx.fillText(top, w * 0.02, h * 0.34)
+    const s2 = s1 * 0.78
+    ctx.font = `italic 400 ${s2}px "Instrument Serif", serif`
+    ctx.letterSpacing = '-0.04em'
+    ctx.fillText(this.lines[1] || '', w * 0.02, h * 0.78)
     gl.bindTexture(gl.TEXTURE_2D, this.texture)
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, off)
@@ -130,7 +151,7 @@ export class LiquidText {
       this.targetHover = 1
     })
     host.addEventListener('pointerleave', () => {
-      this.targetHover = 0
+      this.targetHover = 0.18
     })
     window.addEventListener('pointermove', (e) => {
       const rect = host.getBoundingClientRect()
@@ -138,10 +159,19 @@ export class LiquidText {
       const y = 1 - (e.clientY - rect.top) / rect.height
       this.target[0] = x
       this.target[1] = y
-      const inside = x >= -0.15 && x <= 1.15 && y >= -0.4 && y <= 1.4
-      this.targetHover = inside ? 1 : 0.35
+      const inside = x >= -0.12 && x <= 1.12 && y >= -0.35 && y <= 1.35
+      this.targetHover = inside ? 1 : 0.18
     })
     window.addEventListener('resize', () => this.drawTexture())
+  }
+
+  setTint(hex) {
+    const n = parseInt(hex.replace('#', ''), 16)
+    this.tint = [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]
+  }
+
+  pulse() {
+    this.shock = 1
   }
 
   render(dt) {
@@ -151,6 +181,7 @@ export class LiquidText {
     this.mouse[0] += (this.target[0] - this.mouse[0]) * 0.12
     this.mouse[1] += (this.target[1] - this.mouse[1]) * 0.12
     this.hover += (this.targetHover - this.hover) * 0.08
+    this.shock += (0 - this.shock) * 0.06
     gl.useProgram(this.prog)
     gl.enable(gl.BLEND)
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
@@ -163,6 +194,8 @@ export class LiquidText {
     gl.uniform2f(this.uRes, this.w, this.h)
     gl.uniform1f(this.uTime, this.time)
     gl.uniform1f(this.uHover, this.hover)
+    gl.uniform1f(this.uShock, this.shock)
+    gl.uniform3f(this.uTint, this.tint[0], this.tint[1], this.tint[2])
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
   }
 }
