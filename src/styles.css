@@ -164,7 +164,7 @@ button {
   position: fixed;
   width: 12px;
   height: 12px;
-  border: 1px solid var(--accent);
+  border: 1px solid #fff;
   border-radius: 50%;
   pointer-events: none;
   z-index: 70;
@@ -174,17 +174,11 @@ button {
 
 .ripple-hard {
   border-width: 2px;
-  animation-duration: 0.42s;
-  animation-timing-function: cubic-bezier(0.1, 0.8, 0.2, 1);
+  animation-duration: 0.5s;
 }
 
 .ripple-mid {
-  animation-duration: 0.7s;
-}
-
-.ripple-soft {
-  border-width: 1px;
-  animation-duration: 1.05s;
+  animation-duration: 0.85s;
 }
 
 @keyframes ripple {
@@ -195,182 +189,38 @@ button {
   }
 }
 
-.impact {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 74;
-}
-
-.impact-flash,
-.impact-invert,
-.impact-bars,
-.impact-cross {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-}
-
-.impact-flash {
-  background: #fff;
-}
-
-.impact-invert {
-  background: #fff;
-  mix-blend-mode: difference;
-}
-
-.impact-bars i {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 0;
+html.is-impact,
+html.is-impact body {
   background: #000;
 }
 
-.impact-bars i:first-child {
-  top: 0;
+html.is-impact .grain,
+html.is-impact .vignette,
+html.is-impact .scanlines,
+html.is-impact .trail,
+html.is-impact .cursor,
+html.is-impact .hud,
+html.is-impact .progress {
+  display: none !important;
 }
 
-.impact-bars i:last-child {
-  bottom: 0;
+html.is-impact .chrome,
+html.is-impact .kicker,
+html.is-impact .lede,
+html.is-impact .copy,
+html.is-impact .hero-meta,
+html.is-impact .brand,
+html.is-impact .nav,
+html.is-impact .year,
+html.is-impact .sonic {
+  color: #fff !important;
+  text-shadow: none !important;
+  background: transparent !important;
+  border-color: #fff !important;
 }
 
-.impact-cross span {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  background: #fff;
-  transform: translate(-50%, -50%);
-}
-
-.impact-cross span:first-child {
-  width: 100%;
-  height: 1px;
-}
-
-.impact-cross span:last-child {
-  width: 1px;
-  height: 100%;
-}
-
-html.is-impact .impact-flash {
-  animation: impact-flash 0.2s steps(4, end) forwards;
-}
-
-html.is-impact .impact-invert {
-  animation: impact-invert 0.14s steps(2, end) forwards;
-}
-
-html.is-impact .impact-bars i {
-  animation: impact-bars 0.58s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-html.is-impact .impact-cross {
-  animation: impact-cross 0.32s ease-out forwards;
-}
-
-html.is-impact body {
-  animation: impact-shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
-}
-
-@keyframes impact-flash {
-  0%,
-  14% {
-    opacity: 1;
-  }
-  15%,
-  28% {
-    opacity: 0;
-  }
-  29%,
-  42% {
-    opacity: 0.85;
-  }
-  43%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes impact-invert {
-  0%,
-  55% {
-    opacity: 1;
-  }
-  56%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes impact-bars {
-  0% {
-    height: 16vh;
-  }
-  18% {
-    height: 16vh;
-  }
-  100% {
-    height: 0;
-  }
-}
-
-@keyframes impact-cross {
-  0% {
-    opacity: 1;
-    transform: scale(0.15);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.45);
-  }
-}
-
-@keyframes impact-shake {
-  0%,
-  100% {
-    transform: translate(0, 0) rotate(0);
-  }
-  8% {
-    transform: translate(-16px, 9px) rotate(-0.5deg);
-  }
-  16% {
-    transform: translate(14px, -11px) rotate(0.45deg);
-  }
-  24% {
-    transform: translate(-11px, -7px) rotate(-0.25deg);
-  }
-  32% {
-    transform: translate(9px, 6px) rotate(0.2deg);
-  }
-  48% {
-    transform: translate(-5px, 3px);
-  }
-  64% {
-    transform: translate(3px, -2px);
-  }
-}
-
-.impact-shard {
-  position: fixed;
-  width: 18px;
-  height: 2px;
-  pointer-events: none;
-  z-index: 73;
-  transform: translate(-50%, -50%) rotate(var(--rot));
-  animation: impact-shard 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes impact-shard {
-  0% {
-    opacity: 1;
-    transform: translate(-50%, -50%) rotate(var(--rot)) scaleX(0.4);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)) scaleX(1.4);
-  }
+html.is-impact .liquid-text {
+  filter: grayscale(1) contrast(12) brightness(1.8);
 }
 
 .loader {
@@ -898,8 +748,6 @@ main {
   .cursor,
   .trail,
   .scanlines,
-  .impact,
-  .impact-shard,
   .ripple {
     display: none;
   }

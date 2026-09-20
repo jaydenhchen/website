@@ -145,8 +145,13 @@ export const meshFragment = /* glsl */ `
   uniform float uShock;
   uniform float uPunch;
   uniform float uWave;
+  uniform float uStencil;
 
   void main() {
+    if (uStencil > 0.5) {
+      gl_FragColor = vec4(1.0);
+      return;
+    }
     vec3 n = normalize(cross(dFdx(vPos), dFdy(vPos)));
     vec3 v = normalize(vView);
     vec3 l1 = normalize(vec3(0.6, 0.85, 0.28));
@@ -378,7 +383,9 @@ export const cinematicShader = {
     uWave: { value: 0 },
     uPunch: { value: 0 },
     uShake: { value: 0 },
-    uHit: { value: { x: 0.5, y: 0.5 } }
+    uHit: { value: { x: 0.5, y: 0.5 } },
+    uStencil: { value: 0 },
+    uBlank: { value: 0 }
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -403,6 +410,8 @@ export const cinematicShader = {
     uniform float uPunch;
     uniform float uShake;
     uniform vec2 uHit;
+    uniform float uStencil;
+    uniform float uBlank;
     varying vec2 vUv;
 
     float hash(vec2 p) {
@@ -412,46 +421,37 @@ export const cinematicShader = {
     void main() {
       vec2 uv = vUv;
       float aspect = uRes.x / max(uRes.y, 1.0);
-      uv += vec2(hash(vec2(uTime, 1.7)), hash(vec2(uTime, 8.3))) * uShake * 0.045 - uShake * 0.022;
+      float live = 1.0 - uStencil;
 
       vec2 c = uv - 0.5;
       float dist = length(c);
-      float zoom = 1.0 - uPunch * 0.09 + uFlash * 0.04;
-      uv = 0.5 + c * zoom;
-      c = uv - 0.5;
-      dist = length(c);
-      uv = 0.5 + c * (1.0 + dist * dist * (0.085 + uPunch * 0.22));
+      uv = 0.5 + c * (1.0 + dist * dist * 0.085 * live);
 
       vec2 from = uv - uHit;
       float hd = length(from * vec2(aspect, 1.0));
-      float ring = exp(-abs(hd - uWave * 1.2) * 22.0) * uPunch;
-      uv += normalize(from + 0.0001) * ring * 0.11;
-
-      float slice = floor(uv.y * (18.0 + uPunch * 40.0));
-      float glitch = step(0.82, hash(vec2(slice, floor(uTime * 60.0)))) * uPunch;
-      uv.x += (hash(vec2(slice, 3.1)) - 0.5) * glitch * 0.08;
+      float ring = exp(-abs(hd - uWave * 1.2) * 22.0) * uPunch * live;
+      uv += normalize(from + 0.0001) * ring * 0.07 * live;
 
       vec2 dir = normalize(from + c + uMouse * 0.08 + 0.0001);
-      float ab = uAberration + uPunch * 0.04 + uShake * 0.02 + ring * 0.03;
+      float ab = (uAberration + ring * 0.02) * live;
       float r = texture2D(tDiffuse, uv + dir * ab).r;
       float g = texture2D(tDiffuse, uv).g;
       float b = texture2D(tDiffuse, uv - dir * ab).b;
       vec3 col = vec3(r, g, b);
 
       float vig = smoothstep(1.05, 0.22, dist);
-      col *= mix(vig, 1.0, uFlash);
+      col *= mix(1.0, vig, live);
       float scan = 0.96 + 0.04 * sin(uv.y * uRes.y * 1.4 + uTime * 8.0);
-      col *= mix(scan, 1.0, uFlash);
+      col *= mix(1.0, scan, live);
       float n = hash(uv * uRes + uTime * 40.0);
-      col += (n - 0.5) * (0.03 + uPunch * 0.12);
+      col += (n - 0.5) * 0.03 * live;
 
-      col = mix(col, 1.0 - col, uInvert);
-      float luma = dot(col, vec3(0.299, 0.587, 0.114));
-      col = mix(col, vec3(luma), uMono);
-      col = mix(col, floor(col * 4.0 + 0.5) / 4.0, uMono * 0.55);
-      col += vec3(uFlash);
-      col += vec3(1.0, 0.95, 0.75) * ring * 0.65;
-      col = mix(col, col * vec3(1.04, 1.0, 0.96), 0.35);
+      float luma = max(col.r, max(col.g, col.b));
+      float cut = step(0.18, luma);
+      col = mix(col, vec3(cut), uStencil);
+      col *= 1.0 - uBlank;
+      col += vec3(1.0) * ring * 0.4;
+      col = mix(col, col * vec3(1.04, 1.0, 0.96), 0.35 * live);
       gl_FragColor = vec4(col, 1.0);
     }
   `

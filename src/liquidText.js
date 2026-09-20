@@ -17,12 +17,18 @@ uniform float uTime;
 uniform float uHover;
 uniform float uShock;
 uniform vec3 uTint;
+uniform float uStencil;
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 
 void main() {
+  if (uStencil > 0.5) {
+    float a = texture2D(uTex, vUv).a;
+    gl_FragColor = vec4(vec3(1.0), a);
+    return;
+  }
   vec2 uv = vUv;
   vec2 mouse = uMouse;
   vec2 delta = uv - mouse;
@@ -61,6 +67,7 @@ export class LiquidText {
     this.hover = 0.2
     this.targetHover = 0.2
     this.shock = 0
+    this.stencil = 0
     this.time = 0
     this.tint = [0.84, 1.0, 0.25]
     this.gl = canvas.getContext('webgl', { premultipliedAlpha: false, alpha: true, antialias: true })
@@ -92,6 +99,7 @@ export class LiquidText {
     this.uHover = gl.getUniformLocation(this.prog, 'uHover')
     this.uShock = gl.getUniformLocation(this.prog, 'uShock')
     this.uTint = gl.getUniformLocation(this.prog, 'uTint')
+    this.uStencil = gl.getUniformLocation(this.prog, 'uStencil')
     this.texture = gl.createTexture()
   }
 
@@ -196,6 +204,7 @@ export class LiquidText {
     gl.uniform1f(this.uHover, this.hover)
     gl.uniform1f(this.uShock, this.shock)
     gl.uniform3f(this.uTint, this.tint[0], this.tint[1], this.tint[2])
+    gl.uniform1f(this.uStencil, this.stencil)
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
   }
 }

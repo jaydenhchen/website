@@ -114,6 +114,8 @@ export class World {
       punch: 0,
       wave: 0,
       shake: 0,
+      stencil: 0,
+      blank: 0,
       origin: new THREE.Vector2(0.5, 0.5)
     }
     this.scrollVel = 0
@@ -153,6 +155,7 @@ export class World {
       uAudio: { value: 0 },
       uWave: { value: 0 },
       uPunch: { value: 0 },
+      uStencil: { value: 0 },
       uColorA: { value: new THREE.Color(PALETTES[0].a) },
       uColorB: { value: new THREE.Color(PALETTES[0].b) },
       uColorC: { value: new THREE.Color(PALETTES[0].c) },
@@ -360,6 +363,8 @@ export class World {
       this.impact.invert = 0
       this.impact.mono = 0
       this.impact.shake = 0
+      this.impact.stencil = 0
+      this.impact.blank = 0
       this.impact.released = true
     }
   }
@@ -370,39 +375,22 @@ export class World {
     if (this.reduced) {
       imp.punch *= 0.9
       imp.wave = Math.min(1, imp.wave + 0.08)
+      imp.stencil = 0
+      imp.blank = 0
       this.shock = imp.punch
       return 1
     }
-    const f = imp.frame
-    if (f <= 2) {
-      imp.flash = 1
+    if (imp.age < 0.18) {
+      imp.blank = 0
+      imp.stencil = 1
+      imp.flash = 0
       imp.invert = 0
-      imp.mono = 0.1
+      imp.mono = 0
       imp.punch = 1
       imp.shake = 0
       imp.wave = 0
       this.shock = 1
       return 0
-    }
-    if (f <= 4) {
-      imp.flash = 0.08
-      imp.invert = 1
-      imp.mono = 1
-      imp.punch = 1
-      imp.shake = 0.12
-      imp.wave = 0
-      this.shock = 1
-      return 0
-    }
-    if (f <= 8) {
-      imp.flash = 0.38
-      imp.invert = 0.18
-      imp.mono = 0.42
-      imp.punch = 1
-      imp.shake = 0.9
-      imp.wave = 0.04
-      this.shock = 1
-      return 0.04
     }
     if (!imp.released) {
       imp.released = true
@@ -411,11 +399,13 @@ export class World {
     imp.releaseAge += rawDt
     const t = imp.releaseAge
     const decay = Math.exp(-t * 2.15)
-    imp.flash = Math.exp(-t * 10) * 0.18
+    imp.blank = 0
+    imp.stencil = Math.exp(-t * 18)
+    imp.flash = 0
     imp.invert = 0
-    imp.mono = Math.exp(-t * 7) * 0.14
+    imp.mono = 0
     imp.punch = decay
-    imp.shake = Math.exp(-t * 4.2)
+    imp.shake = 0
     imp.wave = Math.min(1, t * 1.7)
     this.shock = decay
     return 1
@@ -454,12 +444,14 @@ export class World {
     const dt = rawDt * timeScale
     this.simTime += dt
     const t = this.simTime
-    this.progress += (this.targetProgress - this.progress) * (this.reduced ? 1 : 0.07)
-    this.scrollVel += (this.progress - this.lastProgress - this.scrollVel) * 0.2
-    this.lastProgress = this.progress
-    this.mouse.lerp(this.targetMouse, 0.09)
-    this.hover += ((this.dragging ? 1 : 0.4) - this.hover) * 0.05
-    this.intro = Math.min(1, this.intro + dt * 0.42)
+    if (timeScale > 0.001) {
+      this.progress += (this.targetProgress - this.progress) * (this.reduced ? 1 : 0.07)
+      this.scrollVel += (this.progress - this.lastProgress - this.scrollVel) * 0.2
+      this.lastProgress = this.progress
+      this.mouse.lerp(this.targetMouse, 0.09)
+      this.hover += ((this.dragging ? 1 : 0.4) - this.hover) * 0.05
+      this.intro = Math.min(1, this.intro + dt * 0.42)
+    }
 
     const p = this.progress
     const seg = p * 6
@@ -478,6 +470,7 @@ export class World {
     this.uniforms.uAudio.value = this.audio
     this.uniforms.uWave.value = this.impact.wave
     this.uniforms.uPunch.value = this.impact.punch
+    this.uniforms.uStencil.value = this.impact.stencil
     this.uniforms.uColorA.value.copy(this.palette.a)
     this.uniforms.uColorB.value.copy(this.palette.b)
     this.uniforms.uColorC.value.copy(this.palette.c)
@@ -490,23 +483,22 @@ export class World {
     this.wireUniforms.uAudio.value = this.audio
     this.wireUniforms.uWave.value = Math.max(0, this.impact.wave - 0.04)
     this.wireUniforms.uPunch.value = this.impact.punch
+    this.wireUniforms.uStencil.value = this.impact.stencil
     this.wireUniforms.uColorA.value.copy(this.palette.a)
     this.wireUniforms.uColorB.value.copy(this.palette.b)
     this.wireUniforms.uColorC.value.copy(this.palette.c)
 
     const introEase = 1 - Math.pow(1 - this.intro, 3)
     const angle = p * Math.PI * 1.7 + this.drag.x + Math.sin(t * 0.12) * 0.08
-    const crush = this.impact.frame <= 8 ? this.impact.punch * 0.9 : this.impact.punch * 0.28
-    const dist = THREE.MathUtils.lerp(4.6, 6.5, introEase) - Math.sin(p * Math.PI) * 1.15 - crush * 0.55
+    const dist = THREE.MathUtils.lerp(4.6, 6.5, introEase) - Math.sin(p * Math.PI) * 1.15
     const cy = 0.15 + Math.sin(p * Math.PI) * 1.25 - this.drag.y
-    const shake = this.impact.shake
-    this.camera.position.x = Math.sin(angle) * dist + this.mouse.x * 0.55 + (Math.random() - 0.5) * shake * 0.62
+    this.camera.position.x = Math.sin(angle) * dist + this.mouse.x * 0.55
     this.camera.position.z = Math.cos(angle) * dist
-    this.camera.position.y = cy + this.mouse.y * 0.32 + (Math.random() - 0.5) * shake * 0.48
-    this.camera.fov = 38 + Math.sin(p * Math.PI) * 8 + crush * 14
+    this.camera.position.y = cy + this.mouse.y * 0.32
+    this.camera.fov = 38 + Math.sin(p * Math.PI) * 8
     this.camera.updateProjectionMatrix()
     this.camera.lookAt(0, Math.sin(p * Math.PI) * 0.2, 0)
-    this.camera.rotateZ(this.scrollVel * 1.8 + this.mouse.x * 0.018 + (Math.random() - 0.5) * shake * 0.08)
+    this.camera.rotateZ(this.scrollVel * 1.8 + this.mouse.x * 0.018)
 
     this.mesh.rotation.y = t * 0.07 + this.drag.x * 0.45
     this.mesh.rotation.x = Math.sin(t * 0.11) * 0.08
@@ -554,8 +546,6 @@ export class World {
     this.fieldLines.material.color.copy(this.palette.a)
 
     const wave = Math.max(0.001, this.impact.wave)
-    this.shockRing.visible = this.impact.punch > 0.02
-    this.shockRing2.visible = this.impact.punch > 0.02
     this.shockRing.scale.setScalar(0.2 + wave * 7.4)
     this.shockRing2.scale.setScalar(0.12 + wave * 9.2)
     this.shockRing.lookAt(this.camera.position)
@@ -563,21 +553,45 @@ export class World {
     this.shockRing.material.color.set(this.impact.frame <= 4 ? '#ffffff' : this.palette.b)
     this.shockRing.material.opacity = this.impact.punch * (1 - wave) * 0.95
     this.shockRing2.material.opacity = this.impact.punch * (1 - wave) * 0.55
-    this.core.scale.setScalar(1 + this.impact.punch * 1.8 * (this.impact.frame <= 8 ? 1 : 0.35))
+    this.core.scale.setScalar(1 + this.impact.punch * 0.35 * (1 - this.impact.stencil))
 
-    this.bloom.strength = this.bloomBase + this.impact.flash * 1.6 + this.impact.punch * 0.45
+    const cut = this.impact.stencil > 0.5
+    this.mesh.visible = cut ? false : true
+    this.particles.visible = cut ? false : true
+    this.nebula.visible = cut ? false : true
+    this.grid.visible = cut ? false : true
+    this.core.visible = cut ? false : true
+    this.sparks.visible = cut ? false : true
+    this.ribbons.visible = cut ? false : true
+    this.shockRing.visible = cut ? false : this.impact.punch > 0.02
+    this.shockRing2.visible = cut ? false : this.impact.punch > 0.02
+    this.renderer.setClearColor(cut ? 0x000000 : 0x050506, 1)
+    if (cut) {
+      this.fieldLines.material.color.set('#ffffff')
+      for (const sat of this.satellites.children) sat.material.color.set('#ffffff')
+    }
+
+    if (cut) {
+      this.bloom.strength = 0
+      this.bloom.threshold = 1
+    } else {
+      this.bloom.strength = this.bloomBase
+      this.bloom.threshold = 0.34
+    }
     this.fx.uniforms.uTime.value = t
     this.fx.uniforms.uProgress.value = p
     this.fx.uniforms.uShock.value = this.shock
     this.fx.uniforms.uMouse.value.copy(this.mouse)
-    this.fx.uniforms.uAberration.value = 0.0024 + Math.abs(this.scrollVel) * 0.08 + this.impact.punch * 0.03 + this.impact.shake * 0.02
-    this.fx.uniforms.uFlash.value = this.impact.flash
-    this.fx.uniforms.uInvert.value = this.impact.invert
-    this.fx.uniforms.uMono.value = this.impact.mono
+    this.fx.uniforms.uAberration.value = 0.0024 + Math.abs(this.scrollVel) * 0.08
+    this.fx.uniforms.uFlash.value = 0
+    this.fx.uniforms.uInvert.value = 0
+    this.fx.uniforms.uMono.value = 0
     this.fx.uniforms.uWave.value = this.impact.wave
     this.fx.uniforms.uPunch.value = this.impact.punch
-    this.fx.uniforms.uShake.value = this.impact.shake
+    this.fx.uniforms.uShake.value = 0
     this.fx.uniforms.uHit.value.copy(this.impact.origin)
+    this.fx.uniforms.uStencil.value = this.impact.stencil
+    this.fx.uniforms.uBlank.value = this.impact.blank
 
     this.currentShape()
     this.composer.render()

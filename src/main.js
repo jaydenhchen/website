@@ -75,6 +75,7 @@ async function start() {
     const level = sonic.update(t, world.shock)
     world.setProgress(t)
     world.setAudio(level)
+    liquid.stencil = world.impact.stencil
     world.render()
     liquid.render(dt)
     if (uiReady) {
@@ -145,10 +146,10 @@ async function start() {
 
   window.addEventListener('pointerdown', (e) => {
     if (e.target.closest('a, button')) return
-    liquid.pulse()
     const color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d6ff3f'
     triggerImpact(e.clientX, e.clientY, color)
     sonic.bang()
+    window.setTimeout(() => liquid.pulse(), 200)
   })
 
   uiReady = true
